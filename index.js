@@ -4,6 +4,8 @@ require('dotenv').config();
 
 const firebase = require("firebase")
 
+//This is the config code for my Firebase realtime database.
+//Replace this to change to a different Firebase database
 const firebaseConfig = {
     apiKey: process.env.API_KEY,
     authDomain: "butcherbox-scraper.firebaseapp.com",
@@ -19,14 +21,15 @@ firebase.initializeApp(firebaseConfig);
 // //save data to firebase
 let database = firebase.database()
 
-// //data is sitting in the scores bucket here, we are defining this bucket
 let ref = database.ref('products')
-let key1 = "-McRnp7RwZq7MeFH0bxA"
 
+//this function is the workhorse of this project. It navigates a headless browser to log in to Butcherbox.com
+//Once there, it pulls from the HTML the name, description, and price string of every item available.
 async function scrape() {
+    //set headless to true to not launch a UI of Chromium. Set to false to follow the function's progress
     const browser = await puppeteer.launch({ headless: false })
     const page = await browser.newPage()
-    await page.goto("https://login.butcherbox.com/u/login?state=g6Fo2SB4RDN6TVJQb2FRWHZCTW1FbWRtcVRNUFZ2RFNxWEc4UaN0aWTZIGRYVEwyNWF0Zk9sb3pPRnhaaFVtaWtadTBlNjZOOUZzo2NpZNkgcUg3NkF4SHNSbjdqM1VEcUNvYU4xSmh3MjEwQWxiZDE")
+    await page.goto(process.env.LOGIN_PAGE)
     await page.waitForSelector("#username")
     await page.waitForTimeout(5000);
 
@@ -35,7 +38,7 @@ async function scrape() {
     await page.click("button")
     await page.waitForTimeout(10000);
 
-    await page.goto("https://www.butcherbox.com/account/deals", {
+    await page.goto(process.env.DEALS_PAGE, {
         waitUntil: ['domcontentloaded', 'networkidle0']
     })
 
@@ -66,7 +69,7 @@ async function scrape() {
 
     await page.waitForTimeout(10000);
     let dealsArray = grabDealPrices
-    await page.goto("https://www.butcherbox.com/account/addons", {
+    await page.goto(process.env.ADDONS_PAGE, {
         waitUntil: ['domcontentloaded', 'networkidle0']
     })
     const grabAddOnPrices = await page.evaluate(() => {
@@ -97,7 +100,9 @@ async function scrape() {
     return combinedArray
 }
 
-
+//Sometimes the same item will be present in both /deals and /addons. They are often the same price
+//however sometimse the differ, and for the sake of comparison we only want one of these moving to the database.
+//This function removes duplicates.
 function removeDuplicates(dealsArray, addOnArray) {
     for (let i = 0; i < dealsArray.length; i++) {
         for (let j = 0; j < addOnArray.length; j++) {
@@ -124,6 +129,8 @@ function removeDuplicates(dealsArray, addOnArray) {
     return combinedArray
 }
 
+//This function processes the data that has been scraped and turns it into an object with all the field needed
+//for comparison in the ButcherBox Worth It Chrome Extension. 
 async function populateDataTable() {
     const objectsArray = [];
     let scrapedData = await scrape()
@@ -132,6 +139,8 @@ async function populateDataTable() {
         scrapedData[i].noWhiteSpaceName = (scrapedData[i].name).replace(/\s+/g, '')
         scrapedData[i].fullPrice = calculations.calculatePrice(scrapedData[i].priceString);
 
+        //some product descriptions do not contain weight info. If this is the case 
+        //we manually set the weight to 10000 so it can be processed later. Firebase does not like NaN.
         if (isNaN(calculations.calculateAmount(scrapedData[i].amountString).weight)) {
             scrapedData[i].weight = 10000
         } else {
@@ -153,6 +162,9 @@ async function populateDataTable() {
     return objectsArray
 }
 
+//Butcherbox is not consistent with their product names. 
+//For example, some things are plural in one place "Chicken Breast" and plural elsewhere "Chicken Breasts."
+//This makes comparison impossible, so this function deals with that so later comparison is possible.
 function processNameExceptions(dataObject) {
     if (dataObject.name == "Boneless Skinless Breast") {
         dataObject.name = "Boneless Skinless Breasts"
@@ -166,6 +178,9 @@ function processNameExceptions(dataObject) {
     }
 }
 
+//This function matches newly scraped items with the database. If this is a new product, it is added
+//If this is a product from before it updates the database
+//If someone used to be available but is no longer it sets it to be inactive.
 async function updateDatabase(scrapedArray) {
     ref.once('value', (snapshot) => {
         const databaseKeyValue = snapshot.val()
@@ -233,6 +248,7 @@ async function updateDatabase(scrapedArray) {
     })
 }
 
+//this function puts everything together so the database is updated with the live scraped data.
 async function run() {
     let objectsArray = await populateDataTable()
     console.log("done")
