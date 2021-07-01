@@ -90,7 +90,7 @@ async function scrape() {
     await page.waitForTimeout(20000);
     let addOnArray = grabAddOnPrices
 
-    combinedArray = await removeDuplicates(dealsArray, addOnArray)
+    combinedArray = removeDuplicates(dealsArray, addOnArray)
 
     await browser.close()
     console.log(combinedArray)
@@ -143,15 +143,11 @@ async function populateDataTable() {
 
         objectsArray.push(scrapedData[i])
 
-
         if (scrapedData[i].name == "Boneless Skinless Breast" || scrapedData[i].name.includes("ButcherBox")) {
             processNameExceptions(scrapedData[i])
             objectsArray.push(scrapedData[i])
 
         }
-
-
-
     }
 
     return objectsArray
@@ -169,19 +165,6 @@ function processNameExceptions(dataObject) {
 
     }
 }
-
-// function isNameExceptionAndProcess(dataObject) {
-//     let isException = false
-//     if (dataObject.name == "Boneless Skinless Breast") {
-//         dataObject.name = "Boneless Skinless Breasts"
-//         isException = true
-//     }
-//     if ((dataObject.name).includes("ButcherBox")) {
-//         dataObject.name = dataObject.name.slice(11)
-//         isException = true
-//     }
-//     return isException
-// }
 
 async function updateDatabase(scrapedArray) {
     ref.once('value', (snapshot) => {
